@@ -40,3 +40,7 @@ We can add each pixel now as a vertex to the polygon collider. Performing some s
 Each point is a vertex on the collider.
 
 <img src="http://puu.sh/iOKvt/38b454e6c1.png" width="150"/> <img src="http://puu.sh/iOKx2/a237d1c7f6.png" width="150"/>
+
+## License
+
+[BSD license](http://opensource.org/licenses/bsd-license.php)

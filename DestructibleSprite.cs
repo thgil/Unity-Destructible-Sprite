@@ -11,6 +11,8 @@ public class DestructibleSprite : MonoBehaviour {
 
 	// Testing
 	public bool doInit = true;
+	public bool doSplit = false;
+
 	public bool doRefresh;
 	public bool doBI;
 	public bool doErosion;
@@ -40,8 +42,7 @@ public class DestructibleSprite : MonoBehaviour {
 	void Start () {
 
 		poly = gameObject.GetComponent<PolygonCollider2D>();
-		tex = gameObject.GetComponent<SpriteRenderer>().sprite.texture;
-		gameObject.GetComponent<SpriteRenderer>().sprite = Sprite.Create(tex, gameObject.GetComponent<SpriteRenderer>().sprite.rect, new Vector2(0.5f, 0.5f));
+		tex = Instantiate(gameObject.GetComponent<SpriteRenderer>().sprite.texture) as Texture2D;
 
 		xBounds = gameObject.GetComponent<SpriteRenderer>().sprite.bounds.extents.x;
 		yBounds = gameObject.GetComponent<SpriteRenderer>().sprite.bounds.extents.y;
@@ -132,6 +133,97 @@ public class DestructibleSprite : MonoBehaviour {
 		}
 	}
 
+	void split(BinaryImage b) {
+		int startPos;
+
+		// TODO: copy the binaryImage instead of setting it
+		BinaryImage t = new BinaryImage(b.x, b.y);
+		for(int x=0; x<b.Length; x++) t.Set(x, b.Get(x));
+
+		List<List<int> > islands = new List<List<int> >();
+
+		// Find islands
+		while(findStartPos(ref t, out startPos)) {
+			List<int> island = new List<int>();
+
+			floodFill(ref t, ref island, startPos);
+
+			islands.Add(island);
+		}
+
+		// If there is only 1 island we wont split anything
+		if(islands.Count <= 1) return;
+
+		// Get bounding boxes for each island
+		for(int i=0; i<islands.Count; i++) {
+			int x1, y1, x2, y2;
+			x1 = x2 = islands[i][0]%b.x;
+			y1 = y2 = Mathf.FloorToInt((float)islands[i][0]/b.x);
+
+			// Find the smallest and biggest points
+			for(int j=0; j<islands[i].Count; j++) {
+				int x = islands[i][j]%b.x, y = Mathf.FloorToInt((float)islands[i][j]/b.x);
+				if(x < x1) x1 = x;
+				else if(x > x2) x2 = x;
+				if(y < y1) y1 = y;
+				else if(y > y2) y2 = y;
+			}
+
+			int w = x2-x1, h = y2-y1; // bounds
+			int cx = (x2+x1)/2, cy = (y2+y1)/2; // new center for island
+
+			// Create new gameobject
+			GameObject go = new GameObject("DestructibleSpritePiece");
+			go.AddComponent<SpriteRenderer>();
+			go.AddComponent<Rigidbody2D>();
+			go.AddComponent<DestructibleSprite>();
+			go.GetComponent<DestructibleSprite>().doSplit = true;
+
+			// Copy part of the original texture to our new texture
+			Color32[] d = tex.GetPixels32();
+			Color32[] e = new Color32[w*h];
+			for(int x=0, y=0; x<d.Length; x++) {
+				if(x%tex.width>=x1 && x%tex.width<x2 && Mathf.FloorToInt((float)x/tex.width)<y2 && Mathf.FloorToInt((float)x/tex.width)>=y1) {
+					e[y] = d[x];
+					y++;
+				}
+			}
+
+			// Apply to our new texture
+			Texture2D texture = new Texture2D(w,h);
+			texture.SetPixels32(e);
+			texture.Apply();
+
+			// Add the spriteRenderer and apply the texture and inherit parent options
+			SpriteRenderer s = go.GetComponent<SpriteRenderer>();
+			s.sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+			s.color = gameObject.GetComponent<SpriteRenderer>().color;
+			s.sortingOrder = gameObject.GetComponent<SpriteRenderer>().sortingOrder;
+
+			// Set the position to the new center
+			go.transform.position = new Vector3(transform.position.x + (cx + pixelOffset)/pixelsToUnits - xBounds, transform.position.y + (cy + pixelOffset)/pixelsToUnits - yBounds, transform.position.z);
+			// Put it in the same layer as the parent
+			go.layer = gameObject.layer;
+
+		}
+		// We can destroy the orignal object
+		Destroy(gameObject);
+	}
+
+	void floodFill(ref BinaryImage b, ref List<int> i, int pos) {
+		int w = b.x;
+
+		if(b.Get(pos)) {
+			i.Add(pos);
+			b.Set(pos, false);
+		}	else return;
+
+		if((pos%w)+1 < w) floodFill(ref b, ref i, pos+1);				// Right
+		if((pos%w)-1 >= 0) floodFill(ref b, ref i, pos-1);			// Left
+		if(pos+w < b.Length) floodFill(ref b, ref i, pos+w);		// Top
+		if(pos-w >= 0) floodFill(ref b, ref i, pos-w);					// Bottom
+	}
+
 	/**
 	 * Remove a part of the texture
 	 * @param  {Vector2} point         World point
@@ -172,11 +264,14 @@ public class DestructibleSprite : MonoBehaviour {
 
 	// TODO: make into a coroutine?/separate thread
 	private void updateCollider() {
+		tex = ApplyBinaryImage2Texture(ref tex, ref binaryImage);
+		if(doSplit) split(binaryImage);
+
 		// binaryImage = tidyBinaryImage(binaryImage);
 		BinaryImage binaryImageOutline = subtraction(binaryImage, erosion(binaryImage));
 		List<List<Vector2> > paths = getPaths(ref binaryImageOutline);
 
-		gameObject.GetComponent<SpriteRenderer>().sprite = Sprite.Create(ApplyBinaryImage2Texture(ref tex, ref binaryImage), gameObject.GetComponent<SpriteRenderer>().sprite.rect, new Vector2(0.5f, 0.5f));
+		gameObject.GetComponent<SpriteRenderer>().sprite = Sprite.Create(tex, gameObject.GetComponent<SpriteRenderer>().sprite.rect, new Vector2(0.5f, 0.5f));
 
 		setCollider(ref paths);
 	}
@@ -194,7 +289,7 @@ public class DestructibleSprite : MonoBehaviour {
 	}
 
 	// returns true if found a start point
-	private bool findStartPos(ref BinaryImage b, ref int startPos) {
+	private bool findStartPos(ref BinaryImage b, out int startPos) {
 		int w = b.x, h = b.y;
 
 		for(int x= 0; x<w; x++){
@@ -205,15 +300,16 @@ public class DestructibleSprite : MonoBehaviour {
 				}
 			}
 		}
+
+		startPos = 0;
 		return false; // Cannot find any start points.
 	}
 
-
 	private List<List<Vector2> > getPaths(ref BinaryImage b) {
-		int startPos = 0;
+		int startPos;
 		List<List<Vector2> > paths = new List<List<Vector2> >();
 
-		while(findStartPos(ref b, ref startPos)) {
+		while(findStartPos(ref b, out startPos)) {
 			List<Vector2> path = new List<Vector2>();
 
 			// Find path

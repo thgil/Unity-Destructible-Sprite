@@ -1,14 +1,14 @@
-#Destructible sprites with polygon colliders
+# Destructible sprites with polygon colliders
 <img src="http://puu.sh/iOKvt/38b454e6c1.png" width="150"/>
 <img src="http://puu.sh/iOKx2/a237d1c7f6.png" width="150"/>
-##Usage
+## Usage
 Attach `DestructibleSprite.cs` as a script component to the sprite.
 
 When a projectile hits the sprites polygon collider call `ApplyDamage(pos, radius)` at the hit point.
 
  `colliders[i].GetComponent<DestructibleSprite>().ApplyDamage(explosionPos, explosionRadius)`
 
-##Generating a polygon collider for a sprite at runtime
+## Generating a polygon collider for a sprite at runtime
 <img src="http://puu.sh/iOKjr/8231dfaf90.png" width="150"/>
 
 We start by generating a binary image (b) from the texture.
